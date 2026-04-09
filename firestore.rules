@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function authUid() {
+      return request.auth.uid;
+    }
+
+    function authEmail() {
+      return signedIn() && request.auth.token.email != null
+        ? request.auth.token.email
+        : "";
+    }
+
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasOwnUserDoc() {
+      return signedIn() && exists(userDocPath(authUid()));
+    }
+
+    function ownUserDoc() {
+      return get(userDocPath(authUid()));
+    }
+
+    function userRole() {
+      return hasOwnUserDoc() ? ownUserDoc().data.role : "";
+    }
+
+    function isAdmin() {
+      return userRole() == "admin";
+    }
+
+    function isTeacher() {
+      return userRole() == "teacher";
+    }
+
+    function isStudent() {
+      return userRole() == "student";
+    }
+
+    function isApprovedCampusUser() {
+      return isAdmin() || isTeacher() || isStudent();
+    }
+
+    function approvedRequestPath() {
+      return /databases/$(database)/documents/accountRequests/$(authEmail());
+    }
+
+    function hasApprovedRequestForAuthEmail() {
+      return signedIn() &&
+        authEmail() != "" &&
+        exists(approvedRequestPath()) &&
+        get(approvedRequestPath()).data.status == "approved";
+    }
+
+    function approvedRequestRole() {
+      return hasApprovedRequestForAuthEmail()
+        ? get(approvedRequestPath()).data.role
+        : "";
+    }
+
+    function allowedUserKeys() {
+      return [
+        "uid",
+        "email",
+        "fullName",
+        "role",
+        "department",
+        "enrollment",
+        "semester",
+        "academicYear",
+        "subject",
+        "teacherId",
+        "employeeId"
+      ];
+    }
+
+    function isOwnUserRead() {
+      return signedIn() &&
+        (
+          resource.data.uid == authUid() ||
+          (authEmail() != "" && resource.data.email == authEmail())
+        );
+    }
+
+    function isApprovedOwnUserCreate(userId) {
+      return signedIn() &&
+        authUid() == userId &&
+        request.resource.data.keys().hasOnly(allowedUserKeys()) &&
+        request.resource.data.uid == authUid() &&
+        request.resource.data.email == authEmail() &&
+        hasApprovedRequestForAuthEmail() &&
+        request.resource.data.role == approvedRequestRole();
+    }
+
+    function isOwnUserUpdate(userId) {
+      return signedIn() &&
+        authUid() == userId &&
+        resource.data.uid == authUid() &&
+        resource.data.email == authEmail() &&
+        request.resource.data.keys().hasOnly(allowedUserKeys()) &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.role == resource.data.role;
+    }
+
+    function validPendingRequestPayload(requestId) {
+      return request.resource.data.keys().hasOnly([
+          "email",
+          "fullName",
+          "role",
+          "department",
+          "enrollment",
+          "semester",
+          "academicYear",
+          "subject",
+          "teacherId",
+          "employeeId",
+          "status",
+          "requestedAt",
+          "approvedAt",
+          "approvedBy",
+          "rejectedAt",
+          "rejectedBy"
+        ]) &&
+        request.resource.data.email == requestId &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.approvedAt == 0 &&
+        request.resource.data.approvedBy == "" &&
+        request.resource.data.rejectedAt == 0 &&
+        request.resource.data.rejectedBy == "";
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher();
+    }
+
+    match /events/{eventId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher();
+    }
+
+    match /schedule/{scheduleId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher();
+    }
+
+    match /reminders/{reminderId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher();
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwnUserRead();
+      allow create: if isAdmin() || isApprovedOwnUserCreate(userId);
+      allow update: if isAdmin() || isOwnUserUpdate(userId);
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId}/assistant/{documentId} {
+      allow read, create, update, delete: if signedIn() && authUid() == userId;
+    }
+
+    match /accountRequests/{requestId} {
+      allow create: if validPendingRequestPayload(requestId);
+      allow update: if isAdmin() || (
+        validPendingRequestPayload(requestId) &&
+        resource.data.status == "rejected" &&
+        resource.data.email == requestId
+      );
+      allow read, delete: if isAdmin();
+    }
+  }
+}

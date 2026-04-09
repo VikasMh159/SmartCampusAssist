@@ -1,0 +1,50 @@
+[
+  {
+    "title": "AI Workshop",
+    "description": "Hands-on session on Artificial Intelligence basics and applications",
+    "date": "2026-04-05",
+    "location": "Lab 010"
+  },
+  {
+    "title": "Hackathon 2026",
+    "description": "24-hour coding competition for innovative solutions",
+    "date": "2026-04-10",
+    "location": "Main Hall"
+  },
+  {
+    "title": "Project Review",
+    "description": "Mid-term project evaluation by faculty",
+    "date": "2026-04-15",
+    "location": "Class 116"
+  },
+  {
+    "title": "Guest Lecture on Cloud Computing",
+    "description": "Industry expert session on cloud technologies",
+    "date": "2026-04-20",
+    "location": "Seminar Hall"
+  },
+  {
+    "title": "Technical Quiz",
+    "description": "Quiz competition on programming and CS topics",
+    "date": "2026-04-25",
+    "location": "Room 201"
+  },
+  {
+    "title": "Internship Guidance Session",
+    "description": "Guidance for summer internships and placements",
+    "date": "2026-04-28",
+    "location": "Auditorium"
+  },
+  {
+    "title": "Coding Contest",
+    "description": "Competitive coding challenge for students",
+    "date": "2026-05-02",
+    "location": "Lab 013"
+  },
+  {
+    "title": "Final Project Submission",
+    "description": "Last date for submitting final year projects",
+    "date": "2026-05-10",
+    "location": "Department Office"
+  }
+]

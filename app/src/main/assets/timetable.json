@@ -1,0 +1,130 @@
+[
+  {
+    "subject": "DFO",
+    "day": "Monday",
+    "startTime": "08:30 AM",
+    "endTime": "09:25 AM",
+    "room": "LAB 013",
+    "type": "lab"
+  },
+  {
+    "subject": "DFO",
+    "day": "Monday",
+    "startTime": "09:25 AM",
+    "endTime": "10:20 AM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "BDA",
+    "day": "Monday",
+    "startTime": "10:30 AM",
+    "endTime": "11:30 AM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "CD",
+    "day": "Monday",
+    "startTime": "11:30 AM",
+    "endTime": "12:30 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "CD",
+    "day": "Monday",
+    "startTime": "01:00 PM",
+    "endTime": "02:00 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "DFO",
+    "day": "Monday",
+    "startTime": "02:00 PM",
+    "endTime": "03:00 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "DSI",
+    "day": "Monday",
+    "startTime": "03:10 PM",
+    "endTime": "04:10 PM",
+    "room": "LAB 010",
+    "type": "lab"
+  },
+  {
+    "subject": "DSI",
+    "day": "Monday",
+    "startTime": "04:10 PM",
+    "endTime": "05:10 PM",
+    "room": "LAB 010",
+    "type": "lab"
+  },
+  {
+    "subject": "DFO",
+    "day": "Tuesday",
+    "startTime": "08:30 AM",
+    "endTime": "09:25 AM",
+    "room": "LAB 013",
+    "type": "lab"
+  },
+  {
+    "subject": "DFO",
+    "day": "Tuesday",
+    "startTime": "09:25 AM",
+    "endTime": "10:20 AM",
+    "room": "LAB 013",
+    "type": "lab"
+  },
+  {
+    "subject": "DSI",
+    "day": "Tuesday",
+    "startTime": "10:30 AM",
+    "endTime": "11:30 AM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "CD",
+    "day": "Tuesday",
+    "startTime": "11:30 AM",
+    "endTime": "12:30 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "AI",
+    "day": "Tuesday",
+    "startTime": "01:00 PM",
+    "endTime": "02:00 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "BDA",
+    "day": "Tuesday",
+    "startTime": "02:00 PM",
+    "endTime": "03:00 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "CC",
+    "day": "Tuesday",
+    "startTime": "03:10 PM",
+    "endTime": "04:10 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  },
+  {
+    "subject": "CC",
+    "day": "Tuesday",
+    "startTime": "04:10 PM",
+    "endTime": "05:10 PM",
+    "room": "Class 116",
+    "type": "lecture"
+  }
+]

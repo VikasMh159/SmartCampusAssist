@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "442861845538",
+    "project_id": "smartcampusassist",
+    "storage_bucket": "smartcampusassist.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442861845538:android:d671cbf70053d7d7279e7b",
+        "android_client_info": {
+          "package_name": "com.smartcampusassist"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442861845538-vn6infh79mivfnndjr4fmdndi3q4lbg4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.smartcampusassist",
+            "certificate_hash": "f277c95e068a1a0dd2cb5f558f8840746ef2d3df"
+          }
+        },
+        {
+          "client_id": "442861845538-6f4fa2v7ivar0s1al2pfnnpftsj8abtj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBO9YEWRi-1lpiGgY_CawozhY_d6pMRXvQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442861845538-6f4fa2v7ivar0s1al2pfnnpftsj8abtj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
