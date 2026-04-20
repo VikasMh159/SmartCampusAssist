@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.smartcampusassist.campus.CampusInstitute
+import com.smartcampusassist.campus.CampusRepository
+import com.smartcampusassist.campus.CampusRoles
 import com.smartcampusassist.jpui.navigation.Screen
 import com.smartcampusassist.ui.components.GlassCard
 import kotlinx.coroutines.launch
@@ -41,13 +46,79 @@ import kotlinx.coroutines.launch
 @Composable
 fun SignUpScreen(
     navController: NavController,
-    repository: FirebaseAuthRepository = remember { FirebaseAuthRepository() }
+    repository: FirebaseAuthRepository = remember { FirebaseAuthRepository() },
+    campusRepository: CampusRepository = remember { CampusRepository() }
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var formState by remember { mutableStateOf(AccountProfileInput(role = "student")) }
+    var formState by remember { mutableStateOf(AccountProfileInput(role = "")) }
     var isLoading by remember { mutableStateOf(false) }
+    var institutes by remember { mutableStateOf(emptyList<CampusInstitute>()) }
+    var instituteOptions by remember { mutableStateOf(listOf("SALITER", "SETI")) }
+    var institutesLoading by remember { mutableStateOf(true) }
+    var departmentOptions by remember { mutableStateOf(defaultDepartmentOptionsForRole(formState.role)) }
+    var departmentsLoading by remember { mutableStateOf(false) }
+    var branchOptions by remember { mutableStateOf(defaultBranchOptionsForInstitute()) }
+    var branchesLoading by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(Unit) {
+        try {
+            institutes = campusRepository.fetchInstitutes()
+            val instituteNames = institutes
+                .map { it.name.trim() }
+                .filter { it.isNotBlank() }
+            if (instituteNames.isNotEmpty()) {
+                instituteOptions = instituteNames
+            }
+        } catch (_: Exception) {
+        } finally {
+            institutesLoading = false
+        }
+    }
+
+    LaunchedEffect(formState.instituteName) {
+        val selectedInstitute = institutes.firstOrNull {
+            it.name.equals(formState.instituteName.trim(), ignoreCase = true)
+        }
+        if (selectedInstitute == null || selectedInstitute.id.isBlank()) {
+            departmentOptions = defaultDepartmentOptionsForRole(formState.role)
+            branchOptions = defaultBranchOptionsForInstitute(formState.instituteName)
+            departmentsLoading = false
+            branchesLoading = false
+            return@LaunchedEffect
+        }
+
+        departmentsLoading = true
+        branchesLoading = true
+        try {
+            val remoteDepartmentOptions = campusRepository.fetchDepartmentOptions(selectedInstitute.id)
+            val remoteBranchOptions = campusRepository.fetchBranchOptions(selectedInstitute.id)
+            departmentOptions = if (remoteDepartmentOptions.isNotEmpty()) {
+                remoteDepartmentOptions
+            } else {
+                defaultDepartmentOptionsForRole(formState.role)
+            }
+            branchOptions = if (remoteBranchOptions.isNotEmpty()) {
+                remoteBranchOptions
+            } else {
+                defaultBranchOptionsForInstitute(selectedInstitute.type.ifBlank { selectedInstitute.name })
+            }
+        } catch (_: Exception) {
+            departmentOptions = defaultDepartmentOptionsForRole(formState.role)
+            branchOptions = defaultBranchOptionsForInstitute(selectedInstitute.type.ifBlank { selectedInstitute.name })
+        } finally {
+            departmentsLoading = false
+            branchesLoading = false
+        }
+    }
+
+    LaunchedEffect(formState.role) {
+        if (departmentOptions.isEmpty()) {
+            departmentOptions = defaultDepartmentOptionsForRole(formState.role)
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -66,6 +137,7 @@ fun SignUpScreen(
                 )
         ) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(24.dp)
@@ -109,7 +181,19 @@ fun SignUpScreen(
 
                         AccountProfileForm(
                             state = formState,
-                            onStateChange = { formState = it },
+                            onStateChange = { updatedState ->
+                                if (updatedState.instituteName != formState.instituteName) {
+                                    formState = updatedState.copy(branch = "", department = "")
+                                } else {
+                                    formState = updatedState
+                                }
+                            },
+                            instituteOptions = instituteOptions,
+                            institutesLoading = institutesLoading,
+                            departmentOptions = departmentOptions,
+                            departmentsLoading = departmentsLoading,
+                            branchOptions = branchOptions,
+                            branchesLoading = branchesLoading,
                             includePassword = false
                         )
 
@@ -165,7 +249,7 @@ fun SignUpScreen(
                         }
 
                         Text(
-                            text = "Same flow for students and teachers.",
+                            text = "Role-wise request flow for student, teacher, principal, HOD, clerk, and admin.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -197,6 +281,24 @@ fun SignUpScreen(
     }
 }
 
+private fun defaultBranchOptionsForInstitute(instituteHint: String = ""): List<String> {
+    return when (instituteHint.trim().lowercase()) {
+        "engineering" -> listOf("CSE", "CE", "Mechanical", "Electrical", "Electronics", "IT")
+        "diploma" -> listOf("Civil", "Mechanical", "Electrical", "Computer", "Automobile")
+        "pharmacy" -> listOf("B.Pharm", "D.Pharm", "Pharmaceutics", "Pharmacology")
+        "management" -> listOf("BBA", "MBA", "Finance", "Marketing", "HR")
+        else -> listOf("CSE", "CE", "Mechanical", "Electrical", "B.Pharm", "MBA")
+    }
+}
+
+private fun defaultDepartmentOptionsForRole(role: String): List<String> {
+    return when (role) {
+        CampusRoles.STUDENT -> emptyList()
+        CampusRoles.TEACHER -> listOf("Computer Engineering Department", "IT Department", "Mechanical Department", "Civil Department", "Administration Department", "Staff")
+        else -> listOf("Administration", "Accounts", "Examination", "Library", "Staff")
+    }
+}
+
 internal fun validateAccountInput(
     input: AccountProfileInput,
     confirmPassword: String = "",
@@ -212,6 +314,10 @@ internal fun validateAccountInput(
         return "Enter a valid email address"
     }
 
+    if (input.role.trim().isBlank()) {
+        return "Select role"
+    }
+
     if (requirePassword && input.password.trim().length < 6) {
         return "Password must be at least 6 characters"
     }
@@ -220,16 +326,32 @@ internal fun validateAccountInput(
         return "Passwords do not match"
     }
 
-    if (input.department.trim().isBlank()) {
+    if (input.role == CampusRoles.TEACHER && input.department.trim().isBlank()) {
         return "Enter department"
     }
 
-    if (input.role == "teacher") {
-        if (input.subject.trim().isBlank()) {
-            return "Enter subject"
-        }
-    } else if (input.semester <= 0) {
+    if (input.instituteName.trim().isBlank()) {
+        return "Enter institute"
+    }
+
+    if ((input.role == CampusRoles.STUDENT || input.role == CampusRoles.PRINCIPAL || input.role == CampusRoles.HOD || input.role == CampusRoles.CLERK || input.role == CampusRoles.ADMIN) && input.branch.trim().isBlank()) {
+        return "Enter branch"
+    }
+
+    if (!input.role.equals(CampusRoles.STUDENT) && input.academicYear.trim().isBlank()) {
+        return "Enter when you joined"
+    }
+
+    if (input.role == CampusRoles.STUDENT && input.enrollment.trim().isBlank()) {
+        return "Enter enrollment number"
+    }
+
+    if (input.role == CampusRoles.STUDENT && input.semester <= 0) {
         return "Enter a valid semester"
+    }
+
+    if (input.role == CampusRoles.STUDENT && input.division.trim().isBlank()) {
+        return "Enter division"
     }
 
     return null

@@ -39,7 +39,13 @@ class AppViewModel : ViewModel() {
 
             try {
                 val session = authRepository.restoreAuthorizedSession()
-                SessionManager.updateRole(session.role)
+                SessionManager.updateSession(
+                    userId = session.user.uid,
+                    fullName = session.fullName,
+                    role = session.role,
+                    instituteId = session.instituteId,
+                    instituteName = session.instituteName
+                )
                 onLoggedIn()
             } catch (_: Exception) {
                 authRepository.logout()
@@ -52,7 +58,14 @@ class AppViewModel : ViewModel() {
     }
 
     fun updateRole(role: String) {
-        SessionManager.updateRole(role)
+        val currentState = SessionManager.sessionState.value
+        SessionManager.updateSession(
+            userId = currentState.userId.orEmpty(),
+            fullName = currentState.fullName.orEmpty(),
+            role = role,
+            instituteId = currentState.instituteId.orEmpty(),
+            instituteName = currentState.instituteName.orEmpty()
+        )
     }
 
     fun setMainDestination(destination: MainScreenDestination) {

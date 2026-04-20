@@ -36,6 +36,7 @@ import com.smartcampusassist.jpui.profile.UserProfile
 import com.smartcampusassist.jpui.profile.UserRepository
 import com.smartcampusassist.ui.components.AppBackground
 import com.smartcampusassist.ui.components.GlassCard
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -93,6 +94,7 @@ fun ScheduleScreen(
                         .thenBy { it.subject }
                 )
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             errorMessage = e.localizedMessage ?: "Unable to load schedule."
         } finally {
             isLoading = false

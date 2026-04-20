@@ -31,47 +31,80 @@ service cloud.firestore {
       return hasOwnUserDoc() ? ownUserDoc().data.role : "";
     }
 
+    function userInstituteId() {
+      return hasOwnUserDoc() ? ownUserDoc().data.instituteId : "";
+    }
+
+    function ownTeacherId() {
+      return hasOwnUserDoc() ? ownUserDoc().data.teacherId : "";
+    }
+
+    function ownEmployeeId() {
+      return hasOwnUserDoc() ? ownUserDoc().data.employeeId : "";
+    }
+
+    function ownFullName() {
+      return hasOwnUserDoc() ? ownUserDoc().data.fullName : "";
+    }
+
     function isAdmin() {
       return userRole() == "admin";
+    }
+
+    function isPrincipal() {
+      return userRole() == "principal";
     }
 
     function isTeacher() {
       return userRole() == "teacher";
     }
 
+    function isHod() {
+      return userRole() == "hod";
+    }
+
+    function isClerk() {
+      return userRole() == "clerk";
+    }
+
+    function isPeon() {
+      return userRole() == "peon";
+    }
+
     function isStudent() {
       return userRole() == "student";
     }
 
+    function isPrivilegedInstituteRole() {
+      return isAdmin() || isPrincipal() || isHod() || isClerk();
+    }
+
     function isApprovedCampusUser() {
-      return isAdmin() || isTeacher() || isStudent();
+      return isAdmin() || isPrincipal() || isTeacher() || isHod() || isClerk() || isPeon() || isStudent();
     }
 
-    function approvedRequestPath() {
-      return /databases/$(database)/documents/accountRequests/$(authEmail());
+    function sameInstitute(instituteId) {
+      return signedIn() && instituteId != null && userInstituteId() == instituteId;
     }
 
-    function hasApprovedRequestForAuthEmail() {
+    function ownUserOrSameEmail() {
       return signedIn() &&
-        authEmail() != "" &&
-        exists(approvedRequestPath()) &&
-        get(approvedRequestPath()).data.status == "approved";
+        (resource.data.uid == authUid() ||
+          (authEmail() != "" && resource.data.email == authEmail()));
     }
 
-    function approvedRequestRole() {
-      return hasApprovedRequestForAuthEmail()
-        ? get(approvedRequestPath()).data.role
-        : "";
-    }
-
-    function allowedUserKeys() {
+    function userKeys() {
       return [
         "uid",
         "email",
         "fullName",
         "role",
+        "instituteId",
+        "instituteName",
         "department",
+        "branch",
         "enrollment",
+        "division",
         "semester",
         "academicYear",
         "subject",
@@ -80,42 +113,17 @@ service cloud.firestore {
       ];
     }
 
-    function isOwnUserRead() {
-      return signedIn() &&
-        (
-          resource.data.uid == authUid() ||
-          (authEmail() != "" && resource.data.email == authEmail())
-        );
-    }
-
-    function isApprovedOwnUserCreate(userId) {
-      return signedIn() &&
-        authUid() == userId &&
-        request.resource.data.keys().hasOnly(allowedUserKeys()) &&
-        request.resource.data.uid == authUid() &&
-        request.resource.data.email == authEmail() &&
-        hasApprovedRequestForAuthEmail() &&
-        request.resource.data.role == approvedRequestRole();
-    }
-
-    function isOwnUserUpdate(userId) {
-      return signedIn() &&
-        authUid() == userId &&
-        resource.data.uid == authUid() &&
-        resource.data.email == authEmail() &&
-        request.resource.data.keys().hasOnly(allowedUserKeys()) &&
-        request.resource.data.uid == resource.data.uid &&
-        request.resource.data.email == resource.data.email &&
-        request.resource.data.role == resource.data.role;
-    }
-
     function validPendingRequestPayload(requestId) {
       return request.resource.data.keys().hasOnly([
           "email",
           "fullName",
           "role",
+          "instituteId",
+          "instituteName",
           "department",
+          "branch",
           "enrollment",
+          "division",
           "semester",
           "academicYear",
           "subject",
@@ -136,35 +144,114 @@ service cloud.firestore {
         request.resource.data.rejectedBy == "";
     }
 
-    match /assignments/{assignmentId} {
-      allow read: if isApprovedCampusUser();
-      allow create, update, delete: if isTeacher();
+    function canReadStudent() {
+      return isAdmin() ||
+        (isPrivilegedInstituteRole() && sameInstitute(resource.data.instituteId)) ||
+        (isStudent() && resource.data.userId == authUid()) ||
+        (isTeacher() && sameInstitute(resource.data.instituteId));
     }
 
-    match /events/{eventId} {
-      allow read: if isApprovedCampusUser();
-      allow create, update, delete: if isTeacher();
+    function canReadStaff() {
+      return isAdmin() ||
+        (isPrivilegedInstituteRole() && sameInstitute(resource.data.instituteId)) ||
+        (isTeacher() && resource.data.userId == authUid());
     }
 
-    match /schedule/{scheduleId} {
+    match /institutes/{instituteId} {
       allow read: if isApprovedCampusUser();
-      allow create, update, delete: if isTeacher();
-    }
-
-    match /reminders/{reminderId} {
-      allow read: if isApprovedCampusUser();
-      allow create, update, delete: if isTeacher();
+      allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || isOwnUserRead();
-      allow create: if isAdmin() || isApprovedOwnUserCreate(userId);
-      allow update: if isAdmin() || isOwnUserUpdate(userId);
+      allow read: if isAdmin() || ownUserOrSameEmail() || (isPrivilegedInstituteRole() && sameInstitute(resource.data.instituteId));
+      allow create: if isAdmin() || (
+        signedIn() &&
+        authUid() == userId &&
+        request.resource.data.keys().hasOnly(userKeys()) &&
+        request.resource.data.uid == authUid() &&
+        request.resource.data.email == authEmail()
+      );
+      allow update: if isAdmin() || (
+        signedIn() &&
+        authUid() == userId &&
+        resource.data.uid == authUid() &&
+        request.resource.data.keys().hasOnly(userKeys()) &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.role == resource.data.role
+      );
       allow delete: if isAdmin();
     }
 
     match /users/{userId}/assistant/{documentId} {
       allow read, create, update, delete: if signedIn() && authUid() == userId;
+    }
+
+    match /students/{studentId} {
+      allow read: if canReadStudent();
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /staff/{staffId} {
+      allow read: if canReadStaff();
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /classes/{classId} {
+      allow read: if isApprovedCampusUser() && sameInstitute(resource.data.instituteId);
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /subjects/{subjectId} {
+      allow read: if isApprovedCampusUser() && sameInstitute(resource.data.instituteId);
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /teacherAssignments/{assignmentId} {
+      allow read: if isAdmin() ||
+        (isPrivilegedInstituteRole() && sameInstitute(resource.data.instituteId)) ||
+        (isTeacher() && sameInstitute(resource.data.instituteId) && (
+          resource.data.teacherId == authUid() ||
+          resource.data.teacherId == ownTeacherId() ||
+          resource.data.teacherId == ownEmployeeId() ||
+          resource.data.teacherName == ownFullName()
+        ));
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isAdmin() ||
+        (isPrivilegedInstituteRole() && sameInstitute(resource.data.instituteId)) ||
+        (isTeacher() && (resource.data.teacherId == authUid() || resource.data.teacherId == ownUserDoc().data.employeeId)) ||
+        (isStudent() && resource.data.studentUserId == authUid());
+      allow create, update, delete: if isAdmin() ||
+        (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId)) ||
+        (isTeacher() && (request.resource.data.teacherId == authUid() || request.resource.data.teacherId == ownUserDoc().data.employeeId));
+    }
+
+    match /notices/{noticeId} {
+      allow read: if isApprovedCampusUser() && sameInstitute(resource.data.instituteId);
+      allow create, update, delete: if isAdmin() || (isPrivilegedInstituteRole() && sameInstitute(request.resource.data.instituteId));
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher() || isHod() || isPrincipal();
+    }
+
+    match /events/{eventId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher() || isHod() || isPrincipal();
+    }
+
+    match /schedule/{scheduleId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher() || isHod() || isPrincipal();
+    }
+
+    match /reminders/{reminderId} {
+      allow read: if isApprovedCampusUser();
+      allow create, update, delete: if isTeacher() || isHod() || isPrincipal();
     }
 
     match /accountRequests/{requestId} {

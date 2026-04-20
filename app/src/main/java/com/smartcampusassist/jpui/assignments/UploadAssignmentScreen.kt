@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,6 +30,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -50,10 +55,15 @@ import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.smartcampusassist.BuildConfig
+import com.smartcampusassist.campus.CampusCollections
+import com.smartcampusassist.campus.TeacherAssignment
+import com.smartcampusassist.jpui.components.ScrollableDropdownMenuContent
 import com.smartcampusassist.jpui.components.SectionHeader
+import com.smartcampusassist.jpui.profile.UserProfile
 import com.smartcampusassist.jpui.profile.UserRepository
 import com.smartcampusassist.ui.components.AppBackground
 import com.smartcampusassist.ui.components.GlassCard
@@ -67,6 +77,15 @@ private data class AssignmentFileSelection(
     val mimeType: String
 )
 
+private data class TeacherAssignmentOption(
+    val className: String = "",
+    val semester: Int = 0,
+    val subjectTitle: String = "",
+    val subjectCode: String = "",
+    val branch: String = ""
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadAssignmentScreen(
     navController: NavController,
@@ -74,9 +93,7 @@ fun UploadAssignmentScreen(
 ) {
     val auth = remember { FirebaseAuth.getInstance() }
     val firestore = remember { FirebaseFirestore.getInstance() }
-    val storage = remember {
-        FirebaseStorage.getInstance("gs://${BuildConfig.FIREBASE_STORAGE_BUCKET}")
-    }
+    val storage = remember { createAssignmentStorage() }
     val userRepository = remember { UserRepository() }
     val context = navController.context
     val scope = rememberCoroutineScope()
@@ -84,13 +101,76 @@ fun UploadAssignmentScreen(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var selectedFiles by remember { mutableStateOf(listOf<AssignmentFileSelection>()) }
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
+    var assignmentOptions by remember { mutableStateOf(listOf<TeacherAssignmentOption>()) }
+    var selectedClassName by remember { mutableStateOf("") }
+    var selectedSemester by remember { mutableStateOf("") }
+    var selectedSubjectTitle by remember { mutableStateOf("") }
     var isUploading by remember { mutableStateOf(false) }
     val canPublish = selectedFiles.isNotEmpty() || title.trim().isNotEmpty()
+    val semesterOptions = remember(assignmentOptions) {
+        assignmentOptions
+            .mapNotNull { option -> option.semester.takeIf { it > 0 }?.toString() }
+            .distinct()
+            .sortedBy { it.toIntOrNull() ?: Int.MAX_VALUE }
+            .ifEmpty { (1..8).map(Int::toString) }
+    }
+    val classOptions = remember(assignmentOptions) {
+        assignmentOptions.map { it.className }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    val subjectOptions = remember(assignmentOptions, profile) {
+        (assignmentOptions.map { it.subjectTitle } + listOf(profile?.subject.orEmpty()))
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         selectedFiles = uris.map { context.resolveFileSelection(it) }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        try {
+            profile = userRepository.getUserProfile()
+                ?: userRepository.getUserProfile(forceRefresh = true)
+            val currentUser = auth.currentUser ?: return@LaunchedEffect
+            assignmentOptions = loadTeacherAssignmentOptions(
+                firestore = firestore,
+                currentUserId = currentUser.uid,
+                profile = profile
+            )
+            selectedSemester = assignmentOptions.firstOrNull { it.semester > 0 }?.semester?.toString().orEmpty()
+            selectedSubjectTitle = assignmentOptions.firstOrNull()?.subjectTitle.orEmpty()
+        } catch (e: Exception) {
+            assignmentOptions = emptyList()
+            Log.e("UploadAssignmentScreen", "Failed to load teacher assignment options", e)
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(selectedClassName, selectedSemester, assignmentOptions) {
+        val matchingOptions = assignmentOptions.filter { option ->
+            (selectedClassName.isBlank() || option.className == selectedClassName) &&
+                (selectedSemester.isBlank() || option.semester.toString() == selectedSemester)
+        }
+        if (selectedSubjectTitle.isBlank() || matchingOptions.none { it.subjectTitle == selectedSubjectTitle }) {
+            selectedSubjectTitle = matchingOptions.firstOrNull()?.subjectTitle.orEmpty()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(selectedSubjectTitle, selectedSemester, assignmentOptions) {
+        val matchingOption = assignmentOptions.firstOrNull { option ->
+            option.subjectTitle == selectedSubjectTitle &&
+                (selectedSemester.isBlank() || option.semester.toString() == selectedSemester)
+        } ?: return@LaunchedEffect
+
+        if (selectedSemester.isBlank() && matchingOption.semester > 0) {
+            selectedSemester = matchingOption.semester.toString()
+        }
+        if (selectedClassName.isBlank() && matchingOption.className.isNotBlank()) {
+            selectedClassName = matchingOption.className
+        }
     }
 
     AppBackground {
@@ -203,6 +283,39 @@ fun UploadAssignmentScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            CompactSelectField(
+                                value = selectedSemester,
+                                options = semesterOptions,
+                                label = "Semester",
+                                enabled = !isUploading,
+                                onSelected = { selectedSemester = it },
+                                modifier = Modifier.weight(1f)
+                            )
+                            CompactSelectField(
+                                value = selectedSubjectTitle,
+                                options = subjectOptions,
+                                label = "Subject",
+                                enabled = !isUploading,
+                                onSelected = { selectedSubjectTitle = it },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (classOptions.isNotEmpty()) {
+                            CompactSelectField(
+                                value = selectedClassName,
+                                options = classOptions,
+                                label = "Class",
+                                enabled = !isUploading,
+                                onSelected = { selectedClassName = it },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             FilledTonalButton(
                                 onClick = {
                                     filePicker.launch(
@@ -295,12 +408,13 @@ fun UploadAssignmentScreen(
                                 scope.launch {
                                     isUploading = true
                                     try {
-                                        val profile = userRepository.getUserProfile()
+                                        val currentProfile = profile
+                                            ?: userRepository.getUserProfile()
                                             ?: userRepository.getUserProfile(forceRefresh = true)
                                         val currentUser = auth.currentUser
                                             ?: throw IllegalStateException("Please sign in again.")
-                                        val teacherUid = profile?.uid?.ifBlank { currentUser.uid } ?: currentUser.uid
-                                        val teacherName = profile?.fullName
+                                        val teacherUid = currentProfile?.uid?.ifBlank { currentUser.uid } ?: currentUser.uid
+                                        val teacherName = currentProfile?.fullName
                                             ?.trim()
                                             ?.ifBlank {
                                                 currentUser.displayName
@@ -311,6 +425,29 @@ fun UploadAssignmentScreen(
                                                 ?.trim()
                                                 ?.ifBlank { fallbackTeacherName(currentUser.email) }
                                                 ?: fallbackTeacherName(currentUser.email)
+                                        val matchedOption = assignmentOptions.firstOrNull { option ->
+                                            (selectedClassName.isBlank() || option.className == selectedClassName) &&
+                                                (selectedSemester.isBlank() || option.semester.toString() == selectedSemester) &&
+                                                (selectedSubjectTitle.isBlank() || option.subjectTitle == selectedSubjectTitle)
+                                        }
+                                        val resolvedSemester = selectedSemester.toIntOrNull()
+                                            ?: matchedOption?.semester
+                                            ?: 0
+                                        val resolvedSubjectTitle = selectedSubjectTitle.ifBlank {
+                                            matchedOption?.subjectTitle.orEmpty()
+                                        }
+                                        val resolvedClassName = selectedClassName.ifBlank {
+                                            matchedOption?.className.orEmpty()
+                                        }
+                                        val resolvedSubjectCode = matchedOption?.subjectCode.orEmpty()
+                                        val resolvedBranch = matchedOption?.branch.orEmpty()
+
+                                        if (resolvedSemester <= 0 && selectedFiles.isNotEmpty()) {
+                                            throw IllegalStateException("Select a valid semester before publishing.")
+                                        }
+                                        if (resolvedSubjectTitle.isBlank() && selectedFiles.isNotEmpty()) {
+                                            throw IllegalStateException("Select a subject before publishing.")
+                                        }
 
                                         when {
                                             selectedFiles.isNotEmpty() -> {
@@ -328,6 +465,11 @@ fun UploadAssignmentScreen(
                                                                 "mimeType" to uploaded.mimeType,
                                                                 "teacherId" to teacherUid,
                                                                 "teacherName" to teacherName,
+                                                                "className" to resolvedClassName,
+                                                                "subjectTitle" to resolvedSubjectTitle,
+                                                                "subjectCode" to resolvedSubjectCode,
+                                                                "semester" to resolvedSemester,
+                                                                "branch" to resolvedBranch,
                                                                 "createdAt" to System.currentTimeMillis()
                                                             )
                                                         )
@@ -346,6 +488,11 @@ fun UploadAssignmentScreen(
                                                             "mimeType" to "",
                                                             "teacherId" to teacherUid,
                                                             "teacherName" to teacherName,
+                                                            "className" to resolvedClassName,
+                                                            "subjectTitle" to resolvedSubjectTitle,
+                                                            "subjectCode" to resolvedSubjectCode,
+                                                            "semester" to resolvedSemester,
+                                                            "branch" to resolvedBranch,
                                                             "createdAt" to System.currentTimeMillis()
                                                         )
                                                     )
@@ -358,11 +505,14 @@ fun UploadAssignmentScreen(
                                         title = ""
                                         description = ""
                                         selectedFiles = emptyList()
+                                        selectedClassName = ""
+                                        selectedSemester = assignmentOptions.firstOrNull { it.semester > 0 }?.semester?.toString().orEmpty()
+                                        selectedSubjectTitle = assignmentOptions.firstOrNull()?.subjectTitle.orEmpty()
                                         Toast.makeText(context, "Assignments uploaded", Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
                                         Toast.makeText(
                                             context,
-                                            e.localizedMessage ?: "Upload failed",
+                                            e.toUploadErrorMessage(),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     } finally {
@@ -462,6 +612,59 @@ private fun inputColors() = OutlinedTextFieldDefaults.colors(
     unfocusedBorderColor = MaterialTheme.colorScheme.outline
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactSelectField(
+    value: String,
+    options: List<String>,
+    label: String,
+    enabled: Boolean,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val resolvedOptions = options.filter { it.isNotBlank() }.distinct()
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = {
+            if (enabled && resolvedOptions.isNotEmpty()) {
+                expanded = !expanded
+            }
+        },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = inputColors()
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            ScrollableDropdownMenuContent(items = resolvedOptions) { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        expanded = false
+                        onSelected(option)
+                    }
+                )
+            }
+        }
+    }
+}
+
 private data class UploadedAssignmentFile(
     val fileName: String,
     val mimeType: String,
@@ -494,6 +697,15 @@ private suspend fun uploadAssignmentFile(
     )
 }
 
+private fun createAssignmentStorage(): FirebaseStorage {
+    val bucket = BuildConfig.FIREBASE_STORAGE_BUCKET.trim()
+    return if (bucket.isNotBlank()) {
+        FirebaseStorage.getInstance("gs://$bucket")
+    } else {
+        FirebaseStorage.getInstance()
+    }
+}
+
 private fun Context.resolveFileSelection(uri: Uri): AssignmentFileSelection {
     try {
         contentResolver.takePersistableUriPermission(
@@ -521,4 +733,78 @@ private fun Context.resolveFileSelection(uri: Uri): AssignmentFileSelection {
 private fun fallbackTeacherName(email: String?): String {
     val localPart = email?.substringBefore('@')?.trim().orEmpty()
     return localPart.ifBlank { "Teacher" }
+}
+
+private suspend fun loadTeacherAssignmentOptions(
+    firestore: FirebaseFirestore,
+    currentUserId: String,
+    profile: UserProfile?
+): List<TeacherAssignmentOption> {
+    val teacherIdentifiers = listOf(
+        currentUserId,
+        profile?.teacherId.orEmpty(),
+        profile?.employeeId.orEmpty()
+    ).filter { it.isNotBlank() }.distinct()
+
+    val directMatches = if (teacherIdentifiers.isEmpty()) {
+        emptyList()
+    } else {
+        teacherIdentifiers.chunked(10)
+        .flatMap { identifiers ->
+            firestore.collection(CampusCollections.TEACHER_ASSIGNMENTS)
+                .whereIn("teacherId", identifiers)
+                .get()
+                .await()
+                .toObjects(TeacherAssignment::class.java)
+        }
+    }
+
+    val fallbackMatches = if (directMatches.isEmpty() && profile?.instituteId?.isNotBlank() == true) {
+        firestore.collection(CampusCollections.TEACHER_ASSIGNMENTS)
+            .whereEqualTo("instituteId", profile.instituteId)
+            .get()
+            .await()
+            .toObjects(TeacherAssignment::class.java)
+            .filter { assignment ->
+                val normalizedTeacherName = assignment.teacherName.trim()
+                val normalizedProfileName = profile.fullName.trim()
+                assignment.teacherId in teacherIdentifiers ||
+                    (normalizedTeacherName.isNotBlank() &&
+                        normalizedProfileName.isNotBlank() &&
+                        normalizedTeacherName.equals(normalizedProfileName, ignoreCase = true))
+            }
+    } else {
+        emptyList()
+    }
+
+    return (directMatches + fallbackMatches)
+        .map { assignment ->
+            TeacherAssignmentOption(
+                className = assignment.className,
+                semester = assignment.semester,
+                subjectTitle = assignment.subjectTitle,
+                subjectCode = assignment.subjectCode,
+                branch = assignment.branch
+            )
+        }
+        .filter { it.className.isNotBlank() || it.subjectTitle.isNotBlank() || it.semester > 0 }
+        .distinct()
+        .sortedWith(
+            compareBy<TeacherAssignmentOption> { it.semester.takeIf { semester -> semester > 0 } ?: Int.MAX_VALUE }
+                .thenBy { it.subjectTitle }
+                .thenBy { it.className }
+        )
+}
+
+private fun Exception.toUploadErrorMessage(): String {
+    return when (this) {
+        is StorageException -> {
+            if (errorCode == StorageException.ERROR_NOT_AUTHORIZED) {
+                "File upload blocked by Firebase Storage permissions."
+            } else {
+                localizedMessage ?: "File upload failed."
+            }
+        }
+        else -> localizedMessage ?: "Upload failed"
+    }
 }

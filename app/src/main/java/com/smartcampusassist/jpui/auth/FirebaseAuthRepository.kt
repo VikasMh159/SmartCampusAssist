@@ -1,9 +1,11 @@
 package com.smartcampusassist.jpui.auth
 
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
@@ -12,7 +14,10 @@ import kotlinx.coroutines.tasks.await
 
 data class AuthorizedSession(
     val user: FirebaseUser,
-    val role: String
+    val role: String,
+    val fullName: String = "",
+    val instituteId: String = "",
+    val instituteName: String = ""
 )
 
 class UnauthorizedAccountException(message: String) : Exception(message)
@@ -21,6 +26,8 @@ class FirebaseAuthRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
+    private val logTag = "FirebaseAuthRepository"
+
     /* ---------------- GET USER ROLE ---------------- */
 
     suspend fun getUserRole(uid: String): String {
@@ -36,7 +43,8 @@ class FirebaseAuthRepository(
 
     suspend fun loginWithEmail(
         email: String,
-        password: String
+        password: String,
+        expectedRole: String? = null
     ): AuthorizedSession {
         val normalizedEmail = email.trim()
         val result = auth
@@ -46,44 +54,26 @@ class FirebaseAuthRepository(
         val user = result.user
             ?: throw Exception("User not found")
 
-        return authorizeSignedInUser(user)
+        return authorizeSignedInUser(user, expectedRole)
     }
 
     suspend fun submitAccountRequest(input: AccountProfileInput) {
         val normalizedEmail = input.normalizedEmail()
-        val existingUser = firestore.collection("users")
-            .whereEqualTo("email", normalizedEmail)
-            .limit(1)
-            .get()
-            .await()
-            .documents
-            .firstOrNull()
-
-        if (existingUser != null) {
-            throw Exception("An account already exists for this email.")
-        }
-
-        val requestDocument = firestore.collection("accountRequests")
-            .document(normalizedEmail)
-            .get()
-            .await()
-
-        val currentStatus = requestDocument.getString("status").orEmpty()
-        if (requestDocument.exists() && currentStatus == "pending") {
-            throw Exception("A request for this email is already pending admin approval.")
-        }
-
         val payload = hashMapOf<String, Any>(
             "email" to normalizedEmail,
             "fullName" to input.fullName.trim(),
             "role" to input.role.trim().ifBlank { "student" },
-            "department" to input.department.trim(),
+            "instituteId" to input.instituteId.trim(),
+            "instituteName" to input.instituteName.trim(),
+            "department" to if (input.role == "teacher") input.department.trim() else "",
+            "branch" to if (input.role == "student" || input.role == "principal" || input.role == "hod" || input.role == "clerk" || input.role == "admin") input.branch.trim() else "",
             "enrollment" to input.enrollment.trim(),
+            "division" to input.division.trim(),
             "semester" to input.semester,
             "academicYear" to input.academicYear.trim(),
             "subject" to input.subject.trim(),
-            "teacherId" to input.teacherId.trim(),
-            "employeeId" to input.employeeId.trim(),
+            "teacherId" to "",
+            "employeeId" to "",
             "status" to "pending",
             "requestedAt" to System.currentTimeMillis(),
             "approvedAt" to 0L,
@@ -92,16 +82,23 @@ class FirebaseAuthRepository(
             "rejectedBy" to ""
         )
 
-        firestore.collection("accountRequests")
+        val requestReference = firestore.collection("accountRequests")
             .document(normalizedEmail)
-            .set(payload, SetOptions.merge())
-            .await()
+
+        try {
+            requestReference
+                .set(payload)
+                .await()
+        } catch (error: FirebaseFirestoreException) {
+            throw error.toAccountRequestException()
+        }
     }
 
     /* ---------------- GOOGLE LOGIN ---------------- */
 
     suspend fun loginWithGoogle(
-        idToken: String
+        idToken: String,
+        expectedRole: String? = null
     ): AuthorizedSession {
 
         val credential = GoogleAuthProvider
@@ -114,7 +111,7 @@ class FirebaseAuthRepository(
         val user = result.user
             ?: throw Exception("Google login failed")
 
-        return authorizeSignedInUser(user)
+        return authorizeSignedInUser(user, expectedRole)
     }
 
     suspend fun sendPasswordResetEmail(email: String) {
@@ -289,14 +286,34 @@ class FirebaseAuthRepository(
                 default = roleForEmail(normalizedEmail),
                 preserveExistingData = preserveExistingData
             ),
+            "instituteId" to chooseValue(
+                preferred = input.instituteId,
+                existing = baseData["instituteId"]?.toString(),
+                preserveExistingData = preserveExistingData
+            ),
+            "instituteName" to chooseValue(
+                preferred = input.instituteName,
+                existing = baseData["instituteName"]?.toString(),
+                preserveExistingData = preserveExistingData
+            ),
             "department" to chooseValue(
-                preferred = input.department,
+                preferred = if (input.role == "teacher") input.department else "",
                 existing = baseData["department"]?.toString(),
+                preserveExistingData = preserveExistingData
+            ),
+            "branch" to chooseValue(
+                preferred = if (input.role == "student" || input.role == "principal" || input.role == "hod" || input.role == "clerk" || input.role == "admin") input.branch else "",
+                existing = baseData["branch"]?.toString(),
                 preserveExistingData = preserveExistingData
             ),
             "enrollment" to chooseValue(
                 preferred = input.enrollment,
                 existing = baseData["enrollment"]?.toString(),
+                preserveExistingData = preserveExistingData
+            ),
+            "division" to chooseValue(
+                preferred = input.division,
+                existing = baseData["division"]?.toString(),
                 preserveExistingData = preserveExistingData
             ),
             "semester" to chooseSemester(
@@ -315,12 +332,12 @@ class FirebaseAuthRepository(
                 preserveExistingData = preserveExistingData
             ),
             "teacherId" to chooseValue(
-                preferred = input.teacherId,
+                preferred = "",
                 existing = baseData["teacherId"]?.toString(),
                 preserveExistingData = preserveExistingData
             ),
             "employeeId" to chooseValue(
-                preferred = input.employeeId,
+                preferred = "",
                 existing = baseData["employeeId"]?.toString(),
                 preserveExistingData = preserveExistingData
             )
@@ -332,15 +349,19 @@ class FirebaseAuthRepository(
             .await()
 
         if (emailDocument != null && emailDocument.id != uid) {
-            emailDocument.reference
-                .set(
-                    mapOf(
-                        "uid" to uid,
-                        "email" to normalizedEmail
-                    ),
-                    SetOptions.merge()
-                )
-                .await()
+            runCatching {
+                emailDocument.reference
+                    .set(
+                        mapOf(
+                            "uid" to uid,
+                            "email" to normalizedEmail
+                        ),
+                        SetOptions.merge()
+                    )
+                    .await()
+            }.onFailure { error ->
+                Log.w(logTag, "Legacy email-keyed user document sync skipped for ${emailDocument.id}", error)
+            }
         }
     }
 
@@ -393,7 +414,10 @@ class FirebaseAuthRepository(
         return authorizeSignedInUser(currentUser)
     }
 
-    private suspend fun authorizeSignedInUser(user: FirebaseUser): AuthorizedSession {
+    private suspend fun authorizeSignedInUser(
+        user: FirebaseUser,
+        expectedRole: String? = null
+    ): AuthorizedSession {
         try {
             val normalizedEmail = user.email?.trim()?.lowercase().orEmpty()
             if (normalizedEmail.isBlank()) {
@@ -408,7 +432,15 @@ class FirebaseAuthRepository(
             val adminEmail = BuildConfig.ALLOWED_LOGIN_EMAIL.trim().lowercase()
             if (adminEmail.isNotBlank() && normalizedEmail == adminEmail) {
                 ensureAdminProfile(user, userDocument)
-                return AuthorizedSession(user = user, role = "admin")
+                val session = AuthorizedSession(
+                    user = user,
+                    role = "admin",
+                    fullName = user.displayName.orEmpty(),
+                    instituteId = userDocument.getString("instituteId").orEmpty(),
+                    instituteName = userDocument.getString("instituteName").orEmpty()
+                )
+                ensureExpectedRole(session.role, expectedRole)
+                return session
             }
 
             if (userDocument.exists()) {
@@ -418,12 +450,45 @@ class FirebaseAuthRepository(
                     normalizedEmail = normalizedEmail
                 )
 
+                runCatching {
+                    syncUserDocument(
+                        uid = user.uid,
+                        input = AccountProfileInput(
+                            fullName = userDocument.getString("fullName").orEmpty(),
+                            email = normalizedEmail,
+                            role = userDocument.getString("role").orEmpty(),
+                            instituteId = userDocument.getString("instituteId").orEmpty(),
+                            instituteName = userDocument.getString("instituteName").orEmpty(),
+                            department = userDocument.getString("department").orEmpty(),
+                            branch = userDocument.getString("branch").orEmpty(),
+                            enrollment = userDocument.getString("enrollment").orEmpty(),
+                            division = userDocument.getString("division").orEmpty(),
+                            semester = userDocument.getLong("semester")?.toInt() ?: 0,
+                            academicYear = userDocument.getString("academicYear").orEmpty(),
+                            subject = userDocument.getString("subject").orEmpty(),
+                            teacherId = userDocument.getString("teacherId").orEmpty(),
+                            employeeId = userDocument.getString("employeeId").orEmpty()
+                        ),
+                        preserveExistingData = true
+                    )
+                }.onFailure { error ->
+                    Log.w(logTag, "Non-blocking UID profile sync failed for ${user.uid}", error)
+                }
+
                 val role = userDocument.getString("role")
                     ?.trim()
                     ?.ifBlank { null }
                     ?: "student"
 
-                return AuthorizedSession(user = user, role = role)
+                val session = AuthorizedSession(
+                    user = user,
+                    role = role,
+                    fullName = userDocument.getString("fullName").orEmpty(),
+                    instituteId = userDocument.getString("instituteId").orEmpty(),
+                    instituteName = userDocument.getString("instituteName").orEmpty()
+                )
+                ensureExpectedRole(session.role, expectedRole)
+                return session
             }
 
             val requestDocument = firestore.collection("accountRequests")
@@ -447,7 +512,15 @@ class FirebaseAuthRepository(
                         ?.trim()
                         ?.ifBlank { null }
                         ?: "student"
-                    return AuthorizedSession(user = user, role = approvedRole)
+                    val session = AuthorizedSession(
+                        user = user,
+                        role = approvedRole,
+                        fullName = requestDocument.getString("fullName").orEmpty(),
+                        instituteId = requestDocument.getString("instituteId").orEmpty(),
+                        instituteName = requestDocument.getString("instituteName").orEmpty()
+                    )
+                    ensureExpectedRole(session.role, expectedRole)
+                    return session
                 }
             }
 
@@ -550,8 +623,12 @@ class FirebaseAuthRepository(
                 fullName = requestDocument.getString("fullName").orEmpty(),
                 email = normalizedEmail,
                 role = requestDocument.getString("role").orEmpty(),
+                instituteId = requestDocument.getString("instituteId").orEmpty(),
+                instituteName = requestDocument.getString("instituteName").orEmpty(),
                 department = requestDocument.getString("department").orEmpty(),
+                branch = requestDocument.getString("branch").orEmpty(),
                 enrollment = requestDocument.getString("enrollment").orEmpty(),
+                division = requestDocument.getString("division").orEmpty(),
                 semester = requestDocument.getLong("semester")?.toInt() ?: 0,
                 academicYear = requestDocument.getString("academicYear").orEmpty(),
                 subject = requestDocument.getString("subject").orEmpty(),
@@ -568,6 +645,33 @@ class FirebaseAuthRepository(
             "admin"
         } else {
             "student"
+        }
+    }
+
+    private fun ensureExpectedRole(
+        actualRole: String,
+        expectedRole: String?
+    ) {
+        val normalizedExpectedRole = expectedRole?.trim()?.lowercase().orEmpty()
+        if (normalizedExpectedRole.isBlank()) return
+        if (actualRole.trim().lowercase() == normalizedExpectedRole) return
+
+        throw UnauthorizedAccountException(
+            "This account is approved as ${actualRole.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}, not ${normalizedExpectedRole.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}."
+        )
+    }
+
+    private fun FirebaseFirestoreException.toAccountRequestException(): Exception {
+        return when (code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED -> Exception(
+                "A request for this email is already pending or already processed by admin."
+            )
+
+            FirebaseFirestoreException.Code.ALREADY_EXISTS -> Exception(
+                "A request for this email already exists."
+            )
+
+            else -> this
         }
     }
 }

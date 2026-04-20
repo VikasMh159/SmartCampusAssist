@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -38,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.smartcampusassist.BuildConfig
+import com.smartcampusassist.campus.CampusRoles
+import com.smartcampusassist.jpui.components.visibleLazyColumnScrollbar
 import com.smartcampusassist.jpui.profile.UserRepository
 import kotlinx.coroutines.launch
 
@@ -55,6 +58,7 @@ fun AdminProvisionScreen(
     var isCheckingAccess by remember { mutableStateOf(true) }
     var isProcessing by remember { mutableStateOf(false) }
     var accessDenied by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     BackHandler {
         navController.popBackStack()
@@ -143,9 +147,11 @@ fun AdminProvisionScreen(
 
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp),
+                            .padding(24.dp)
+                            .visibleLazyColumnScrollbar(listState),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         item {
@@ -317,8 +323,18 @@ private fun AccountRequestCard(
                 fontWeight = FontWeight.Bold
             )
             Text(text = request.email)
-            Text(text = "Role: ${request.role.ifBlank { "student" }}")
-            Text(text = "Department: ${request.department.ifBlank { "-" }}")
+            Text(
+                text = "Role: ${request.role.ifBlank { CampusRoles.STUDENT }.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}"
+            )
+            if (request.instituteName.isNotBlank()) {
+                Text(text = "Institute: ${request.instituteName}")
+            }
+            if (request.role == CampusRoles.STUDENT && request.branch.isNotBlank()) {
+                Text(text = "Branch: ${request.branch}")
+            }
+            if (request.role != CampusRoles.STUDENT) {
+                Text(text = "Department: ${request.department.ifBlank { "-" }}")
+            }
             if (request.status == "approved") {
                 Text(text = "Delivery State: ${request.processingState.ifBlank { "queued" }}")
             }
@@ -326,14 +342,17 @@ private fun AccountRequestCard(
                 Text(text = "Error: ${request.deliveryError}")
             }
 
-            if (request.role == "teacher") {
+            if (request.role == CampusRoles.TEACHER || request.role == CampusRoles.HOD) {
                 Text(text = "Subject: ${request.subject.ifBlank { "-" }}")
                 Text(
                     text = "Teacher ID: ${request.teacherId.ifBlank { request.employeeId.ifBlank { "-" } }}"
                 )
+            } else if (request.role != CampusRoles.STUDENT) {
+                Text(text = "Employee ID: ${request.employeeId.ifBlank { "-" }}")
             } else {
                 Text(text = "Enrollment: ${request.enrollment.ifBlank { "-" }}")
                 Text(text = "Semester: ${request.semester.takeIf { it > 0 } ?: "-"}")
+                Text(text = "Division: ${request.division.ifBlank { "-" }}")
             }
 
             Text(text = "Academic Year: ${request.academicYear.ifBlank { "-" }}")

@@ -29,22 +29,34 @@ service firebase.storage {
       return userRole() == "teacher";
     }
 
+    function isPrincipal() {
+      return userRole() == "principal";
+    }
+
+    function isHod() {
+      return userRole() == "hod";
+    }
+
     function isStudent() {
       return userRole() == "student";
     }
 
     function isApprovedCampusUser() {
-      return isAdmin() || isTeacher() || isStudent();
+      return isAdmin() || isTeacher() || isPrincipal() || isHod() || isStudent();
+    }
+
+    function canManageUploads() {
+      return isTeacher() || isPrincipal() || isHod() || isAdmin();
     }
 
     match /assignments/{teacherId}/{fileName} {
       allow read: if isApprovedCampusUser();
-      allow write: if isTeacher();
+      allow write: if canManageUploads();
     }
 
     match /events/{teacherId}/{fileName} {
       allow read: if isApprovedCampusUser();
-      allow write: if isTeacher();
+      allow write: if canManageUploads();
     }
   }
 }

@@ -29,6 +29,10 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +66,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.smartcampusassist.R
+import com.smartcampusassist.campus.CampusRoles
+import com.smartcampusassist.jpui.components.ScrollableDropdownMenuContent
 import com.smartcampusassist.jpui.navigation.AppViewModel
 import com.smartcampusassist.jpui.navigation.Screen
 import com.smartcampusassist.ui.components.GlassCard
@@ -80,6 +86,7 @@ fun LoginScreen(
     var password by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var showPasswordStep by rememberSaveable { mutableStateOf(false) }
+    var selectedRole by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     val googleSignInClient = remember {
@@ -94,10 +101,14 @@ fun LoginScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         try {
+            if (selectedRole.isBlank()) {
+                Toast.makeText(context, "Select role first", Toast.LENGTH_SHORT).show()
+                return@rememberLauncherForActivityResult
+            }
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             val account = task.getResult(ApiException::class.java)
             val idToken = account.idToken ?: return@rememberLauncherForActivityResult
-            viewModel.loginWithGoogle(idToken)
+            viewModel.loginWithGoogle(idToken, selectedRole)
         } catch (_: Exception) {
             Toast.makeText(context, "Google sign-in failed", Toast.LENGTH_SHORT).show()
         }
@@ -211,6 +222,26 @@ fun LoginScreen(
                             modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
                         )
 
+                        Text(
+                            text = "Login as",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        LoginRoleSelector(
+                            selectedRole = selectedRole,
+                            onRoleSelected = {
+                                selectedRole = it
+                                if (showPasswordStep) {
+                                    password = ""
+                                }
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
                         OutlinedTextField(
                             value = email,
                             onValueChange = {
@@ -276,7 +307,15 @@ fun LoginScreen(
                                         Toast.makeText(context, "Enter password", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    viewModel.loginWithEmail(normalizedEmail, password)
+                                    if (selectedRole.isBlank()) {
+                                        Toast.makeText(context, "Select role first", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    viewModel.loginWithEmail(
+                                        normalizedEmail,
+                                        password,
+                                        selectedRole
+                                    )
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -317,6 +356,10 @@ fun LoginScreen(
                             Button(
                                 onClick = {
                                     val normalizedEmail = email.trim()
+                                    if (selectedRole.isBlank()) {
+                                        Toast.makeText(context, "Select role first", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
                                     if (!Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) {
                                         Toast.makeText(context, "Enter a valid email address", Toast.LENGTH_SHORT).show()
                                         return@Button
@@ -383,7 +426,7 @@ fun LoginScreen(
 
                 item {
                     Text(
-                        text = "Student and teacher access",
+                        text = "Role-wise access for student, teacher, principal, HOD, clerk, and admin",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -415,6 +458,62 @@ fun LoginScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LoginRoleSelector(
+    selectedRole: String,
+    onRoleSelected: (String) -> Unit
+) {
+    val roles = listOf(
+        CampusRoles.STUDENT,
+        CampusRoles.TEACHER,
+        CampusRoles.PRINCIPAL,
+        CampusRoles.HOD,
+        CampusRoles.CLERK,
+        CampusRoles.ADMIN
+    )
+
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = selectedRole.toUiLabel(),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Select Role") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            shape = RoundedCornerShape(18.dp),
+            colors = authInputColors()
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            ScrollableDropdownMenuContent(items = roles) { role ->
+                DropdownMenuItem(
+                    text = { Text(role.toUiLabel()) },
+                    onClick = {
+                        expanded = false
+                        onRoleSelected(role)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun String.toUiLabel(): String {
+    if (isBlank()) return ""
+    return replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 }
 
 @Composable

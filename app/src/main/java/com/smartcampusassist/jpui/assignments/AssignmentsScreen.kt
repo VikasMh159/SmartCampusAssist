@@ -72,6 +72,11 @@ data class Assignment(
     val mimeType: String = "",
     val teacherId: String = "",
     val teacherName: String = "",
+    val className: String = "",
+    val subjectTitle: String = "",
+    val subjectCode: String = "",
+    val branch: String = "",
+    val semester: Int = 0,
     val createdAt: Long = 0L
 )
 
@@ -145,10 +150,22 @@ fun AssignmentsScreen(
         }
     }
 
-    val fileCount = remember(assignments) { assignments.count { it.fileUrl.isNotBlank() } }
-    val textPostCount = remember(assignments) { assignments.count { it.fileUrl.isBlank() } }
-    val filteredAssignments = remember(assignments, selectedFilter) {
+    val visibleAssignments = remember(assignments, profile) {
         assignments.filter { assignment ->
+            val currentProfile = profile ?: return@filter true
+            if (currentProfile.role != "student") return@filter true
+
+            val semesterMatches = assignment.semester <= 0 || assignment.semester == currentProfile.semester
+            val branchMatches = assignment.branch.isBlank() ||
+                currentProfile.branch.isBlank() ||
+                assignment.branch.equals(currentProfile.branch, ignoreCase = true)
+            semesterMatches && branchMatches
+        }
+    }
+    val fileCount = remember(visibleAssignments) { visibleAssignments.count { it.fileUrl.isNotBlank() } }
+    val textPostCount = remember(visibleAssignments) { visibleAssignments.count { it.fileUrl.isBlank() } }
+    val filteredAssignments = remember(visibleAssignments, selectedFilter) {
+        visibleAssignments.filter { assignment ->
             when (selectedFilter) {
                 AssignmentFilter.All -> true
                 AssignmentFilter.WithFiles -> assignment.fileUrl.isNotBlank()
@@ -247,8 +264,8 @@ fun AssignmentsScreen(
                     if (filteredAssignments.isEmpty()) {
                         item {
                             MessageState(
-                                title = if (assignments.isEmpty()) "No assignments" else "No matches",
-                                message = if (assignments.isEmpty()) {
+                                title = if (visibleAssignments.isEmpty()) "No assignments" else "No matches",
+                                message = if (visibleAssignments.isEmpty()) {
                                     "Assignments will appear here as soon as a teacher publishes them."
                                 } else {
                                     "No assignments match the selected filter."
@@ -294,13 +311,14 @@ fun AssignmentsScreen(
         }
     }
 
-    if (editingAssignment != null && profile?.role == "teacher") {
+    val currentEditingAssignment = editingAssignment
+    if (currentEditingAssignment != null && profile?.role == "teacher") {
         EditAssignmentDialog(
-            assignment = editingAssignment!!,
+            assignment = currentEditingAssignment,
             onDismiss = { editingAssignment = null },
             onSave = { updatedTitle, updatedDescription ->
                 firestore.collection("assignments")
-                    .document(editingAssignment!!.id)
+                    .document(currentEditingAssignment.id)
                     .update(
                         mapOf(
                             "title" to updatedTitle.trim(),
@@ -334,6 +352,13 @@ private fun DocumentSnapshot.toAssignment(): Assignment? {
         mimeType = payload["mimeType"]?.toString().orEmpty(),
         teacherId = payload["teacherId"]?.toString().orEmpty(),
         teacherName = payload["teacherName"]?.toString().orEmpty(),
+        className = payload["className"]?.toString().orEmpty(),
+        subjectTitle = payload["subjectTitle"]?.toString().orEmpty(),
+        subjectCode = payload["subjectCode"]?.toString().orEmpty(),
+        branch = payload["branch"]?.toString().orEmpty(),
+        semester = (payload["semester"] as? Number)?.toInt()
+            ?: payload["semester"]?.toString()?.toIntOrNull()
+            ?: 0,
         createdAt = (payload["createdAt"] as? Number)?.toLong()
             ?: payload["createdAt"]?.toString()?.toLongOrNull()
             ?: 0L
@@ -531,6 +556,22 @@ private fun AssignmentCard(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+
+                    val assignmentMeta = listOfNotNull(
+                        assignment.subjectTitle.ifBlank {
+                            assignment.subjectCode.ifBlank { null }
+                        },
+                        assignment.className.ifBlank { null },
+                        assignment.semester.takeIf { it > 0 }?.let { "Sem $it" }
+                    )
+                    if (assignmentMeta.isNotEmpty()) {
+                        Text(
+                            text = assignmentMeta.joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
                         )
                     }
 

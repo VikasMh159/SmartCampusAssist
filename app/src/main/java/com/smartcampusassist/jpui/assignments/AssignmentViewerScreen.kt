@@ -397,8 +397,9 @@ private fun PdfAssignmentViewer(
                             key = { index -> "$url-$index" },
                             contentType = { "pdf_page" }
                         ) { index ->
+                            val currentPdfFile = pdfFile ?: return@items
                             PdfPageCard(
-                                file = pdfFile!!,
+                                file = currentPdfFile,
                                 pageIndex = index
                             )
                         }
@@ -751,21 +752,30 @@ private fun downloadFile(
     url: String,
     title: String
 ) {
-    val safeName = if (URLUtil.guessFileName(url, null, null).isNotBlank()) {
-        URLUtil.guessFileName(url, null, null)
-    } else {
-        title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    runCatching {
+        val safeName = if (URLUtil.guessFileName(url, null, null).isNotBlank()) {
+            URLUtil.guessFileName(url, null, null)
+        } else {
+            title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        }
+
+        val request = DownloadManager.Request(Uri.parse(url))
+            .setTitle(title)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_DOWNLOADS,
+                safeName
+            )
+
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        manager.enqueue(request)
+    }.onSuccess {
+        Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
+    }.onFailure { throwable ->
+        Toast.makeText(
+            context,
+            throwable.localizedMessage ?: "Unable to start download",
+            Toast.LENGTH_SHORT
+        ).show()
     }
-
-    val request = DownloadManager.Request(Uri.parse(url))
-        .setTitle(title)
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalPublicDir(
-            Environment.DIRECTORY_DOWNLOADS,
-            safeName
-        )
-
-    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    manager.enqueue(request)
-    Toast.makeText(context, "Download started", Toast.LENGTH_SHORT).show()
 }

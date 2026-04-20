@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.smartcampusassist.jpui.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -20,6 +21,14 @@ class LoginViewModel : ViewModel() {
     /* ---------------- EMAIL LOGIN ---------------- */
 
     fun loginWithEmail(email: String, password: String) {
+        loginWithEmail(email, password, expectedRole = null)
+    }
+
+    fun loginWithEmail(
+        email: String,
+        password: String,
+        expectedRole: String?
+    ) {
 
         if (isLoggingIn) return
 
@@ -29,10 +38,18 @@ class LoginViewModel : ViewModel() {
                 _uiState.value = LoginUiState.Loading
 
                 // Step 1: Firebase Auth
-                val session = repository.loginWithEmail(email, password)
+                val session = repository.loginWithEmail(email, password, expectedRole)
 
                 // Step 2: Fetch role from Firestore
                 val role = session.role
+
+                SessionManager.updateSession(
+                    userId = session.user.uid,
+                    fullName = session.fullName,
+                    role = session.role,
+                    instituteId = session.instituteId,
+                    instituteName = session.instituteName
+                )
 
                 // Step 3: Send role to UI
                 _uiState.value = LoginUiState.Success(role)
@@ -54,6 +71,13 @@ class LoginViewModel : ViewModel() {
     /* ---------------- GOOGLE LOGIN ---------------- */
 
     fun loginWithGoogle(idToken: String) {
+        loginWithGoogle(idToken, expectedRole = null)
+    }
+
+    fun loginWithGoogle(
+        idToken: String,
+        expectedRole: String?
+    ) {
 
         if (isLoggingIn) return
 
@@ -63,10 +87,18 @@ class LoginViewModel : ViewModel() {
                 _uiState.value = LoginUiState.Loading
 
                 // Step 1: Firebase Auth
-                val session = repository.loginWithGoogle(idToken)
+                val session = repository.loginWithGoogle(idToken, expectedRole)
 
                 // Step 2: Fetch role from Firestore
                 val role = session.role
+
+                SessionManager.updateSession(
+                    userId = session.user.uid,
+                    fullName = session.fullName,
+                    role = session.role,
+                    instituteId = session.instituteId,
+                    instituteName = session.instituteName
+                )
 
                 // Step 3: Send role to UI
                 _uiState.value = LoginUiState.Success(role)

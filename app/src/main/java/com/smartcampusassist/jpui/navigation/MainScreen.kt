@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.smartcampusassist.campus.CampusDashboardScreen
+import com.smartcampusassist.campus.CampusRoles
 import com.smartcampusassist.jpui.assignments.AssignmentsScreen
 import com.smartcampusassist.jpui.assignments.UploadAssignmentScreen
 import com.smartcampusassist.jpui.assistant.ChatScreen
@@ -98,7 +100,28 @@ fun MainScreen(
 
             when (activeDestination) {
                 MainScreenDestination.Home -> {
-                    if (role == "teacher") {
+                    if (role == CampusRoles.STUDENT) {
+                        StudentHomeScreen(
+                            onOpenSchedule = {
+                                appViewModel.setMainDestination(MainScreenDestination.Schedule)
+                            },
+                            onOpenAssignments = {
+                                appViewModel.setMainDestination(MainScreenDestination.Assignments)
+                            },
+                            onOpenReminders = {
+                                appViewModel.setMainDestination(MainScreenDestination.Reminders)
+                            },
+                            onOpenEvents = {
+                                appViewModel.setMainDestination(MainScreenDestination.Events)
+                            },
+                            onOpenAssistant = {
+                                appViewModel.setMainDestination(MainScreenDestination.Assistant)
+                            },
+                            onOpenProfile = {
+                                appViewModel.setMainDestination(MainScreenDestination.Profile)
+                            }
+                        )
+                    } else if (role == CampusRoles.TEACHER) {
                         TeacherHomeScreen(
                             onOpenSchedule = {
                                 appViewModel.setMainDestination(MainScreenDestination.Schedule)
@@ -123,7 +146,8 @@ fun MainScreen(
                             }
                         )
                     } else {
-                        StudentHomeScreen(
+                        CampusDashboardScreen(
+                            sessionState = sessionState,
                             onOpenSchedule = {
                                 appViewModel.setMainDestination(MainScreenDestination.Schedule)
                             },
@@ -141,6 +165,9 @@ fun MainScreen(
                             },
                             onOpenProfile = {
                                 appViewModel.setMainDestination(MainScreenDestination.Profile)
+                            },
+                            onOpenCampusAdmin = {
+                                navController.navigate(Screen.CampusAdmin.route)
                             }
                         )
                     }
@@ -173,7 +200,7 @@ fun MainScreen(
                 }
 
                 MainScreenDestination.Assignments -> {
-                    if (role == "student" || role == "teacher") {
+                    if (role == CampusRoles.STUDENT || role == CampusRoles.TEACHER || role == CampusRoles.HOD || role == CampusRoles.PRINCIPAL) {
                         AssignmentsScreen(
                             navController = navController,
                             onBack = onSectionBack
@@ -184,7 +211,7 @@ fun MainScreen(
                 }
 
                 MainScreenDestination.UploadAssignment -> {
-                    if (role == "teacher") {
+                    if (role == CampusRoles.TEACHER || role == CampusRoles.HOD) {
                         UploadAssignmentScreen(
                             navController = navController,
                             onBack = onSectionBack

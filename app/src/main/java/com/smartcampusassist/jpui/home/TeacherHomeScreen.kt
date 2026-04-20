@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.smartcampusassist.BuildConfig
 import com.smartcampusassist.jpui.auth.AccountRequest
+import com.smartcampusassist.jpui.components.visibleLazyColumnScrollbar
 import com.smartcampusassist.jpui.components.DashboardHeader
 import com.smartcampusassist.jpui.components.DashboardCard
 import com.smartcampusassist.jpui.profile.UserProfile
@@ -41,9 +43,10 @@ fun TeacherHomeScreen(
     var profile by remember { mutableStateOf<UserProfile?>(null) }
     var pendingRequestCount by remember { mutableIntStateOf(0) }
     var hasFailedDeliveries by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
-        profile = userRepository.getUserProfile()
+        profile = runCatching { userRepository.getUserProfile() }.getOrNull()
     }
 
     val isAdminUser = profile?.role == "admin" || (
@@ -77,9 +80,11 @@ fun TeacherHomeScreen(
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .visibleLazyColumnScrollbar(listState),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -88,6 +93,7 @@ fun TeacherHomeScreen(
 
         item {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardCard(
@@ -110,6 +116,7 @@ fun TeacherHomeScreen(
 
         item {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardCard(
@@ -132,6 +139,7 @@ fun TeacherHomeScreen(
 
         item {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardCard(

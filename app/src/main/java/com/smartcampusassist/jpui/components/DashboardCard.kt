@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.smartcampusassist.ui.components.GlassCard
 
@@ -42,7 +43,7 @@ fun DashboardCard(
 ) {
     GlassCard(
         modifier = modifier
-            .height(112.dp)
+            .height(126.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(28.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
@@ -113,14 +114,18 @@ fun DashboardCard(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (subtitle.isNotBlank()) {
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 6.dp)
+                            modifier = Modifier.padding(top = 6.dp),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

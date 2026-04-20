@@ -33,7 +33,7 @@ fun DashboardHeader() {
     var profile by remember { mutableStateOf<UserProfile?>(null) }
 
     LaunchedEffect(Unit) {
-        profile = repository.getUserProfile()
+        profile = runCatching { repository.getUserProfile() }.getOrNull()
     }
 
     GlassCard(
@@ -95,9 +95,13 @@ private fun buildHeaderSubtitle(profile: UserProfile?): String {
     if (profile == null) return "Account details"
 
     return when {
+        profile.instituteName.isNotBlank() && profile.role != "student" -> {
+            "${buildRoleLabel(profile)} • ${profile.instituteName}"
+        }
         profile.role == "student" && profile.enrollment.isNotBlank() -> profile.enrollment
         profile.role == "teacher" && profile.teacherId.isNotBlank() -> profile.teacherId
         profile.role == "teacher" && profile.employeeId.isNotBlank() -> profile.employeeId
+        profile.instituteName.isNotBlank() -> profile.instituteName
         profile.email.isNotBlank() -> profile.email
         else -> buildRoleLabel(profile)
     }

@@ -356,9 +356,10 @@ fun EventsScreen(
         }
     }
 
-    if (editingEvent != null && profile?.role == "teacher") {
+    val currentEditingEvent = editingEvent
+    if (currentEditingEvent != null && profile?.role == "teacher") {
         EditEventDialog(
-            event = editingEvent!!,
+            event = currentEditingEvent,
             storage = storage,
             teacherId = profile?.uid.orEmpty(),
             onDismiss = { editingEvent = null },

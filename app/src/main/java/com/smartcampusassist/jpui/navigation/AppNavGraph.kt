@@ -12,6 +12,7 @@ import com.smartcampusassist.jpui.assignments.UploadAssignmentScreen
 import com.smartcampusassist.jpui.auth.AdminProvisionScreen
 import com.smartcampusassist.jpui.auth.LoginScreen
 import com.smartcampusassist.jpui.auth.SignUpScreen
+import com.smartcampusassist.campus.CampusAdminScreen
 import com.smartcampusassist.jpui.events.EventDetailScreen
 import com.smartcampusassist.jpui.events.EventsScreen
 import com.smartcampusassist.jpui.main.MainScreen
@@ -76,6 +77,12 @@ fun AppNavGraph(
 
         composable(Screen.AdminProvision.route) {
             AdminProvisionScreen(
+                navController = navController
+            )
+        }
+
+        composable(Screen.CampusAdmin.route) {
+            CampusAdminScreen(
                 navController = navController
             )
         }

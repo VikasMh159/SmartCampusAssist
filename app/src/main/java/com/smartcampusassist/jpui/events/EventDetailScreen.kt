@@ -80,7 +80,7 @@ fun EventDetailScreen(
             errorMessage != null -> MessageState("Event unavailable", errorMessage ?: "")
             event == null -> MessageState("Event not found", "This event is no longer available.")
             else -> {
-                val currentEvent = event!!
+                val currentEvent = event ?: return@AppBackground
                 val generated = remember(
                     currentEvent.id,
                     currentEvent.title,

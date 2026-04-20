@@ -108,8 +108,8 @@ fun ProfileScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             ProfileStatCard(
-                                title = "Department",
-                                value = profileData.department.ifBlank { "-" },
+                                title = profileSecondaryStatTitle(profileData),
+                                value = profileSecondaryStatValue(profileData),
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -122,10 +122,13 @@ fun ProfileScreen(
                         ProfileItem("Email", profileData.email, Icons.Outlined.Email)
                     }
                     item {
-                        ProfileItem("Department", profileData.department, Icons.Outlined.Workspaces)
+                        ProfileItem("Institute", profileData.instituteName, Icons.Outlined.Workspaces)
                     }
 
                     if (profileData.role == "student") {
+                        item {
+                            ProfileItem("Branch", profileData.branch, Icons.Outlined.Workspaces)
+                        }
                         item {
                             ProfileItem("Enrollment", profileData.enrollment, Icons.Outlined.Badge)
                         }
@@ -137,15 +140,45 @@ fun ProfileScreen(
                         }
                     }
 
-                    if (profileData.role == "teacher") {
+                    if (profileData.role != "student") {
+                        item {
+                            ProfileItem("Department", profileData.department, Icons.Outlined.Workspaces)
+                        }
+                    }
+
+                    if (profileData.role != "student" && profileData.branch.isNotBlank()) {
+                        item {
+                            ProfileItem("Branch / Program", profileData.branch, Icons.Outlined.Workspaces)
+                        }
+                    }
+
+                    if (profileData.role == "teacher" || profileData.role == "hod") {
                         item {
                             ProfileItem(
-                                "Subject",
-                                profileData.subject
-                                    .ifBlank { profileData.teacherId }
-                                    .ifBlank { profileData.employeeId },
+                                "Subjects",
+                                profileData.subjects.joinToString().ifBlank {
+                                    profileData.subject.ifBlank { "-" }
+                                },
                                 Icons.Outlined.School
                             )
+                        }
+                        if (profileData.semesters.isNotEmpty()) {
+                            item {
+                                ProfileItem(
+                                    "Semesters",
+                                    profileData.semesters.joinToString { "Sem $it" },
+                                    Icons.Outlined.School
+                                )
+                            }
+                        }
+                        if (profileData.assignedClasses.isNotEmpty()) {
+                            item {
+                                ProfileItem(
+                                    "Classes",
+                                    profileData.assignedClasses.joinToString(),
+                                    Icons.Outlined.Workspaces
+                                )
+                            }
                         }
                     }
 
@@ -337,10 +370,32 @@ private fun buildProfileSubtitle(profile: UserProfile): String {
 
     val secondary = when {
         profile.role == "student" && profile.enrollment.isNotBlank() -> profile.enrollment
+        profile.role == "student" && profile.branch.isNotBlank() -> profile.branch
+        profile.role != "student" && profile.department.isNotBlank() -> profile.department
+        profile.role != "student" && profile.branch.isNotBlank() -> profile.branch
+        (profile.role == "teacher" || profile.role == "hod") && profile.subjects.isNotEmpty() -> profile.subjects.joinToString()
         profile.role == "teacher" && profile.subject.isNotBlank() -> profile.subject
         profile.email.isNotBlank() -> profile.email
         else -> "Campus member"
     }
 
     return "$role | $secondary"
+}
+
+private fun profileSecondaryStatTitle(profile: UserProfile): String {
+    return when {
+        profile.role == "student" -> "Branch"
+        profile.department.isNotBlank() -> "Department"
+        profile.branch.isNotBlank() -> "Program"
+        else -> "Institute"
+    }
+}
+
+private fun profileSecondaryStatValue(profile: UserProfile): String {
+    return when {
+        profile.role == "student" -> profile.branch.ifBlank { "-" }
+        profile.department.isNotBlank() -> profile.department.ifBlank { "-" }
+        profile.branch.isNotBlank() -> profile.branch.ifBlank { "-" }
+        else -> profile.instituteName.ifBlank { "-" }
+    }
 }
